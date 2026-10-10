@@ -154,6 +154,39 @@ enum BonsplitTabItemHitTesting {
     }
 }
 
+enum TabBarDragZoneHitTesting {
+    static func shouldCaptureLeadingChrome(
+        at point: NSPoint,
+        bounds: NSRect,
+        tabFrames: [CGRect],
+        hasTabs: Bool
+    ) -> Bool {
+        guard bounds.contains(point) else { return false }
+        let paddedFrames = tabFrames.map {
+            $0.insetBy(dx: -BonsplitTabItemHitTesting.horizontalSlop, dy: -2)
+        }
+        guard !paddedFrames.contains(where: { $0.contains(point) }) else { return false }
+        return true
+    }
+
+    static func shouldCaptureTrailingEmptyChrome(
+        at point: NSPoint,
+        bounds: NSRect,
+        tabFrames: [CGRect],
+        reservedTrailingWidth: CGFloat
+    ) -> Bool {
+        guard bounds.contains(point) else { return false }
+        let trailingLimit = bounds.maxX - max(0, reservedTrailingWidth)
+        guard point.x < trailingLimit else { return false }
+        let paddedFrames = tabFrames.map {
+            $0.insetBy(dx: -BonsplitTabItemHitTesting.horizontalSlop, dy: -2)
+        }
+        guard !paddedFrames.contains(where: { $0.contains(point) }) else { return false }
+        let startX = paddedFrames.map(\.maxX).max() ?? bounds.minX
+        return point.x >= startX
+    }
+}
+
 private struct SplitButtonLaneWidthPreferenceKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
 
