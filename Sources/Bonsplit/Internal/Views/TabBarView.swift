@@ -159,9 +159,12 @@ enum TabBarDragZoneHitTesting {
         at point: NSPoint,
         bounds: NSRect,
         tabFrames: [CGRect],
-        hasTabs: Bool
+        hasTabs: Bool,
+        tabFramesReady: Bool? = nil
     ) -> Bool {
         guard bounds.contains(point) else { return false }
+        let geometryReady = tabFramesReady ?? (!hasTabs || !tabFrames.isEmpty)
+        guard geometryReady else { return false }
         let paddedFrames = tabFrames.map {
             $0.insetBy(dx: -BonsplitTabItemHitTesting.horizontalSlop, dy: -2)
         }
@@ -173,9 +176,11 @@ enum TabBarDragZoneHitTesting {
         at point: NSPoint,
         bounds: NSRect,
         tabFrames: [CGRect],
-        reservedTrailingWidth: CGFloat
+        reservedTrailingWidth: CGFloat,
+        tabFramesReady: Bool = true
     ) -> Bool {
         guard bounds.contains(point) else { return false }
+        guard tabFramesReady else { return false }
         let trailingLimit = bounds.maxX - max(0, reservedTrailingWidth)
         guard point.x < trailingLimit else { return false }
         let paddedFrames = tabFrames.map {
@@ -1247,6 +1252,10 @@ struct TabBarView: View {
         HStack(spacing: 0) {
             if appearance.tabBarLeadingInset > 0 && controller.internalController.rootNode.allPaneIds.first == pane.id {
                 TabBarDragZoneView(
+                    hitRegion: .leadingChrome(
+                        geometryRegistry: tabItemGeometryRegistry,
+                        tabIds: tabIds
+                    ),
                     isMinimalMode: isMinimalMode,
                     isFocusedPane: isFocused,
                     onSingleClick: focusPaneFromTabBarChrome
@@ -1275,6 +1284,11 @@ struct TabBarView: View {
                         let trailing = max(0, containerGeo.size.width - contentWidth)
                         if trailing >= 1 {
                             TabBarDragZoneView(
+                                hitRegion: .registeredTrailingEmptyChrome(
+                                    geometryRegistry: tabItemGeometryRegistry,
+                                    tabIds: tabIds,
+                                    reservedTrailingWidth: 0
+                                ),
                                 isMinimalMode: isMinimalMode,
                                 isFocusedPane: isFocused,
                                 onSingleClick: focusPaneFromTabBarChrome
@@ -1528,6 +1542,11 @@ struct TabBarView: View {
     @ViewBuilder
     private var dropZoneAfterTabs: some View {
         TabBarDragZoneView(
+            hitRegion: .registeredTrailingEmptyChrome(
+                geometryRegistry: tabItemGeometryRegistry,
+                tabIds: tabIds,
+                reservedTrailingWidth: 0
+            ),
             isMinimalMode: isMinimalMode,
             isFocusedPane: isFocused,
             onSingleClick: focusPaneFromTabBarChrome
@@ -2846,6 +2865,10 @@ struct TabBarDragAndHoverView: NSViewRepresentable {
 struct TabBarDragZoneView: NSViewRepresentable {
     enum HitRegion {
         case entireBounds
+        case leadingChrome(
+            geometryRegistry: TabBarItemGeometryRegistry,
+            tabIds: [UUID]
+        )
         case trailingEmptyChrome(tabFrames: [CGRect], reservedTrailingWidth: CGFloat)
         case registeredTrailingEmptyChrome(
             geometryRegistry: TabBarItemGeometryRegistry,
@@ -3019,19 +3042,38 @@ struct TabBarDragZoneView: NSViewRepresentable {
             switch hitRegion {
             case .entireBounds:
                 return true
+            case .leadingChrome(let geometryRegistry, let tabIds):
+                guard isMouseDownOrDragCandidate else { return false }
+                let resolved = resolvedTabFrames(
+                    geometryRegistry: geometryRegistry,
+                    tabIds: tabIds
+                )
+                return TabBarDragZoneHitTesting.shouldCaptureLeadingChrome(
+                    at: point,
+                    bounds: bounds,
+                    tabFrames: resolved.frames,
+                    hasTabs: !tabIds.isEmpty,
+                    tabFramesReady: resolved.isComplete
+                )
             case .trailingEmptyChrome(let tabFrames, let reservedTrailingWidth):
                 guard isMouseDownOrDragCandidate else { return false }
                 return shouldCaptureTrailingEmptyChrome(
                     at: point,
                     tabFrames: tabFrames,
-                    reservedTrailingWidth: reservedTrailingWidth
+                    reservedTrailingWidth: reservedTrailingWidth,
+                    tabFramesReady: true
                 )
             case .registeredTrailingEmptyChrome(let geometryRegistry, let tabIds, let reservedTrailingWidth):
                 guard isMouseDownOrDragCandidate else { return false }
+                let resolved = resolvedTabFrames(
+                    geometryRegistry: geometryRegistry,
+                    tabIds: tabIds
+                )
                 return shouldCaptureTrailingEmptyChrome(
                     at: point,
-                    tabFrames: geometryRegistry.frames(for: tabIds, in: self).values.map { $0 },
-                    reservedTrailingWidth: reservedTrailingWidth
+                    tabFrames: resolved.frames,
+                    reservedTrailingWidth: reservedTrailingWidth,
+                    tabFramesReady: resolved.isComplete
                 )
             }
         }
@@ -3039,16 +3081,33 @@ struct TabBarDragZoneView: NSViewRepresentable {
         private func shouldCaptureTrailingEmptyChrome(
             at point: NSPoint,
             tabFrames: [CGRect],
-            reservedTrailingWidth: CGFloat
+            reservedTrailingWidth: CGFloat,
+            tabFramesReady: Bool
         ) -> Bool {
-            let trailingLimit = bounds.maxX - max(0, reservedTrailingWidth)
-            guard point.x < trailingLimit else { return false }
-            let paddedFrames = tabFrames.map {
-                $0.insetBy(dx: -BonsplitTabItemHitTesting.horizontalSlop, dy: -2)
+            TabBarDragZoneHitTesting.shouldCaptureTrailingEmptyChrome(
+                at: point,
+                bounds: bounds,
+                tabFrames: tabFrames,
+                reservedTrailingWidth: reservedTrailingWidth,
+                tabFramesReady: tabFramesReady
+            )
+        }
+
+        private func resolvedTabFrames(
+            geometryRegistry: TabBarItemGeometryRegistry,
+            tabIds: [UUID]
+        ) -> (frames: [CGRect], isComplete: Bool) {
+            guard !tabIds.isEmpty else { return ([], true) }
+            var framesById = geometryRegistry.frames(for: tabIds, in: self)
+            let missingIds = tabIds.filter { framesById[$0] == nil }
+            if !missingIds.isEmpty {
+                let laidOut = BonsplitTabItemHitRegionRegistry.laidOutFrames(
+                    for: missingIds,
+                    in: self
+                )
+                framesById.merge(laidOut) { registered, _ in registered }
             }
-            guard !paddedFrames.contains(where: { $0.contains(point) }) else { return false }
-            let startX = paddedFrames.map(\.maxX).max() ?? bounds.minX
-            return point.x >= startX
+            return (tabIds.compactMap { framesById[$0] }, framesById.count == tabIds.count)
         }
 
         func windowDragCursorRectsForCurrentState() -> [NSRect] {
@@ -3057,23 +3116,37 @@ struct TabBarDragZoneView: NSViewRepresentable {
             switch hitRegion {
             case .entireBounds:
                 return [bounds]
+            case .leadingChrome(let geometryRegistry, let tabIds):
+                let resolved = resolvedTabFrames(
+                    geometryRegistry: geometryRegistry,
+                    tabIds: tabIds
+                )
+                guard resolved.isComplete else { return [] }
+                return [bounds]
             case .trailingEmptyChrome(let tabFrames, let reservedTrailingWidth):
                 return trailingEmptyChromeCursorRects(
                     tabFrames: tabFrames,
                     reservedTrailingWidth: reservedTrailingWidth
                 )
             case .registeredTrailingEmptyChrome(let geometryRegistry, let tabIds, let reservedTrailingWidth):
+                let resolved = resolvedTabFrames(
+                    geometryRegistry: geometryRegistry,
+                    tabIds: tabIds
+                )
                 return trailingEmptyChromeCursorRects(
-                    tabFrames: geometryRegistry.frames(for: tabIds, in: self).values.map { $0 },
-                    reservedTrailingWidth: reservedTrailingWidth
+                    tabFrames: resolved.frames,
+                    reservedTrailingWidth: reservedTrailingWidth,
+                    tabFramesReady: resolved.isComplete
                 )
             }
         }
 
         private func trailingEmptyChromeCursorRects(
             tabFrames: [CGRect],
-            reservedTrailingWidth: CGFloat
+            reservedTrailingWidth: CGFloat,
+            tabFramesReady: Bool = true
         ) -> [NSRect] {
+            guard tabFramesReady else { return [] }
             let trailingLimit = bounds.maxX - max(0, reservedTrailingWidth)
             guard trailingLimit > bounds.minX else { return [] }
 

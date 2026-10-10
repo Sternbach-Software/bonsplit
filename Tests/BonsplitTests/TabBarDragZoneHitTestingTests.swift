@@ -38,4 +38,19 @@ final class TabBarDragZoneHitTestingTests: XCTestCase {
             )
         )
     }
+
+    func testTrailingChromeDoesNotCaptureWhileTabFramesAreTemporarilyMissing() {
+        let bounds = CGRect(x: 0, y: 0, width: 300, height: 28)
+
+        XCTAssertFalse(
+            TabBarDragZoneHitTesting.shouldCaptureTrailingEmptyChrome(
+                at: CGPoint(x: 180, y: 14),
+                bounds: bounds,
+                tabFrames: [],
+                reservedTrailingWidth: 0,
+                tabFramesReady: false
+            ),
+            "The empty-chrome overlay must yield while a non-empty tab strip is missing live geometry."
+        )
+    }
 }
