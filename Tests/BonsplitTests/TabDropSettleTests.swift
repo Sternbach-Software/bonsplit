@@ -139,7 +139,6 @@ private final class DropInfo: NSObject, NSDraggingInfo {
 
     func slideDraggedImage(to screenPoint: NSPoint) {}
     func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
-    func resetSpringLoading() {}
 
     func enumerateDraggingItems(
         options enumOpts: NSDraggingItemEnumerationOptions = [],
