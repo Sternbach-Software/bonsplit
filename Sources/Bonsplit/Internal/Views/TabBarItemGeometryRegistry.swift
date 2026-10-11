@@ -308,7 +308,13 @@ final class TabBarItemGeometryRegistry {
     }
 
     func geometryDidChange(for tabId: UUID) {
-        if tabId == selectedTabId {
+        if tabId == trailingRevealTabId {
+            // A hovered tab can be unselected. Keep its reveal intent alive
+            // when SwiftUI moves or resizes that item, even if the selected
+            // tab's geometry is unchanged.
+            pendingScrollIntent = .revealHoveredTab(tabId)
+            reconcilePendingScrollIntent()
+        } else if tabId == selectedTabId {
             if selectedTabFrameDidChange(tabId), trailingRevealTabId == nil {
                 pendingScrollIntent = .revealTab(tabId)
             }
@@ -433,7 +439,7 @@ final class TabBarItemGeometryRegistry {
         if TabBarStyling.shouldKeepLeadingAligned(
             contentWidth: metrics.documentWidth,
             containerWidth: metrics.viewportWidth
-        ) {
+        ), trailingObscuredWidth <= 0.5 {
             setHorizontalOffset(0, metrics: metrics)
             return true
         }
@@ -446,24 +452,33 @@ final class TabBarItemGeometryRegistry {
         }
 
         let maximumOffset = max(0, metrics.documentWidth - metrics.viewportWidth)
-        let revealOffset: CGFloat
+        let requestedOffset: CGFloat
         if itemFrame.width > metrics.unobscuredViewportWidth {
             // A narrow strip cannot show the whole tab. Expose its trailing
             // close affordance instead of centering it under the action lane.
-            revealOffset = itemFrame.maxX - metrics.unobscuredViewportWidth
+            requestedOffset = itemFrame.maxX - metrics.unobscuredViewportWidth
         } else if preservingPointer {
             // Moving only the clipped edge keeps a pointer in the uncovered
             // viewport over the same tab. Centering can move a different tab
             // under that stationary pointer and trigger another hover reveal.
-            revealOffset = itemFrame.minX < visibleRange.lowerBound
+            requestedOffset = itemFrame.minX < visibleRange.lowerBound
                 ? itemFrame.minX
                 : itemFrame.maxX - metrics.unobscuredViewportWidth
         } else {
-            revealOffset = itemFrame.midX - (metrics.unobscuredViewportWidth / 2)
+            requestedOffset = itemFrame.midX - (metrics.unobscuredViewportWidth / 2)
         }
-        let targetOffset = min(max(revealOffset, 0), maximumOffset)
+        let targetOffset = min(max(requestedOffset, 0), maximumOffset)
         setHorizontalOffset(targetOffset, metrics: metrics)
-        return true
+
+        let targetVisibleRange = targetOffset...(targetOffset + metrics.unobscuredViewportWidth)
+        if itemFrame.width > metrics.unobscuredViewportWidth {
+            return itemFrame.maxX <= targetVisibleRange.upperBound + 0.5
+        }
+        if preservingPointer, itemFrame.minX < visibleRange.lowerBound {
+            return itemFrame.minX >= targetVisibleRange.lowerBound - 0.5
+        }
+        return itemFrame.minX >= targetVisibleRange.lowerBound - 0.5
+            && itemFrame.maxX <= targetVisibleRange.upperBound + 0.5
     }
 
     private func currentScrollMetrics() -> ScrollMetrics? {
