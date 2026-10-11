@@ -110,7 +110,6 @@ final class TabDropSettleTests: XCTestCase {
 
 /// The parts of a drop AppKit hands a destination, with the one dragging
 /// item whose frame the destination may move.
-@MainActor
 private final class DropInfo: NSObject, NSDraggingInfo {
     let window: NSWindow
     let location: NSPoint
@@ -138,7 +137,7 @@ private final class DropInfo: NSObject, NSDraggingInfo {
     var springLoadingHighlight: NSSpringLoadingHighlight { .none }
 
     func slideDraggedImage(to screenPoint: NSPoint) {}
-    func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
+    func resetSpringLoading() {}
 
     func enumerateDraggingItems(
         options enumOpts: NSDraggingItemEnumerationOptions = [],
