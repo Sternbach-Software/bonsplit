@@ -1660,6 +1660,7 @@ struct TabBarView: View {
                 let button = buttons[index]
                 splitActionButton(button, tooltips: tooltips)
                 .accessibilityIdentifier(splitActionButtonAccessibilityIdentifier(button))
+                .bonsplitHintTarget(splitActionButtonTooltip(button, tooltips: tooltips))
                 .safeHelp(splitActionButtonTooltip(button, tooltips: tooltips))
             }
         }

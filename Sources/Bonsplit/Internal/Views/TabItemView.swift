@@ -427,6 +427,7 @@ struct TabItemView: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(tab.title)
+        .bonsplitHintTarget(tab.title)
         // The close button is only built while selected or hovered and is
         // merged into this element, so VoiceOver needs a named action to
         // close any tab.
