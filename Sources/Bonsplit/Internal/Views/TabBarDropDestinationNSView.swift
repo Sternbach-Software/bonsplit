@@ -8,6 +8,8 @@ final class TabBarDropDestinationNSView: NSView {
     weak var splitViewController: SplitViewController?
     weak var geometryRegistry: TabBarItemGeometryRegistry?
     var onIndicatorIndexChanged: ((Int?) -> Void)?
+    /// Whether a drop lands at once instead of settling (tests set it).
+    var reducesMotion: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     private let dropIndexResolver: TabDropIndexResolver
     private var presentedIndicatorIndex: Int?
@@ -62,7 +64,61 @@ final class TabBarDropDestinationNSView: NSView {
               let targetIndex = insertionIndex(for: sender) else {
             return false
         }
-        return handler.performDrop(from: sender.draggingPasteboard, at: targetIndex)
+        // Read from the strip before the move reflows it.
+        let settle = settleSlot(for: sender, at: targetIndex)
+        guard handler.performDrop(from: sender.draggingPasteboard, at: targetIndex) else { return false }
+        if let settle {
+            // AppKit slides the drag image into the slot; the tab shows there
+            // when the session ends (SplitViewController.beginTabSettle).
+            sender.animatesToDestination = true
+            sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
+                item.draggingFrame = settle.frame
+            }
+            splitViewController?.beginTabSettle(settle.tabId)
+        }
+        return true
+    }
+
+    /// The slot, in this view, that the dragged tab takes when dropped at
+    /// `index`: nil when the drop lands at once (not a tab drag from this
+    /// app, Reduce Motion, a slot whose tabs have no frames).
+    private func settleSlot(for sender: any NSDraggingInfo, at index: Int) -> (tabId: UUID, frame: NSRect)? {
+        guard !reducesMotion(), let pane, let geometryRegistry,
+              let session = splitViewController?.tabDragSession else { return nil }
+        let frames = pane.tabs.map { geometryRegistry.frame(for: $0.id, in: self) }
+        guard let row = frames.lazy.compactMap({ $0 }).first else { return nil }
+        let minX: CGFloat
+        let width: CGFloat
+        if session.sourcePaneId == pane.id,
+           let source = pane.tabs.firstIndex(where: { $0.id == session.tab.id }),
+           let own = frames[source] {
+            // The tabs between move over by its width.
+            width = own.width
+            if index > source {
+                guard let before = frames[index - 1] else { return nil }
+                minX = before.maxX - width
+            } else {
+                guard let at = frames[index] else { return nil }
+                minX = at.minX
+            }
+        } else {
+            // From another pane: the slot opens where the indicator showed.
+            var imageWidth: CGFloat = 0
+            sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, stop in
+                imageWidth = item.draggingFrame.width
+                stop.pointee = true
+            }
+            guard imageWidth > 0 else { return nil }
+            width = imageWidth
+            if index < frames.count {
+                guard let at = frames[index] else { return nil }
+                minX = at.minX
+            } else {
+                guard let last = frames.last ?? nil else { return nil }
+                minX = last.maxX
+            }
+        }
+        return (session.tab.id, NSRect(x: minX, y: row.minY, width: width, height: row.height))
     }
 
     override func concludeDragOperation(_ sender: (any NSDraggingInfo)?) {

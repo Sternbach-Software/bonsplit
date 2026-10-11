@@ -10,7 +10,8 @@ final class TabDropSettleTests: XCTestCase {
     func testLaterTabDroppedEarlierSlidesToTheSlotItTakes() throws {
         let strip = try makeStrip()
         let moved = strip.pane.tabs[3]
-        _ = strip.controller.internalController.beginTabDrag(moved, from: strip.pane.id)
+        let splits = strip.controller.internalController
+        let generation = splits.beginTabDrag(moved, from: strip.pane.id)
         // Over the second tab's leading half: insertion index 1.
         let drop = try makeDrop(for: moved, at: NSPoint(x: 110, y: 15), in: strip)
 
@@ -19,6 +20,24 @@ final class TabDropSettleTests: XCTestCase {
         XCTAssertEqual(strip.pane.tabs.firstIndex(where: { $0.id == moved.id }), 1)
         XCTAssertTrue(drop.animatesToDestination)
         XCTAssertEqual(drop.item.draggingFrame, NSRect(x: 100, y: 0, width: 100, height: 30))
+        // The tab shows in its slot once the image has landed, not before.
+        XCTAssertEqual(splits.settlingTabId, moved.id)
+        splits.nativeTabDragSessionDidEnd(generation: generation)
+        XCTAssertNil(splits.settlingTabId)
+    }
+
+    func testReduceMotionDropLandsAtOnce() throws {
+        let strip = try makeStrip()
+        strip.destination.reducesMotion = { true }
+        let moved = strip.pane.tabs[3]
+        _ = strip.controller.internalController.beginTabDrag(moved, from: strip.pane.id)
+        let drop = try makeDrop(for: moved, at: NSPoint(x: 110, y: 15), in: strip)
+
+        XCTAssertTrue(strip.destination.performDragOperation(drop))
+
+        XCTAssertEqual(strip.pane.tabs.firstIndex(where: { $0.id == moved.id }), 1)
+        XCTAssertFalse(drop.animatesToDestination)
+        XCTAssertNil(strip.controller.internalController.settlingTabId)
     }
 
     func testEarlierTabDroppedLaterSlidesToTheSlotItTakes() throws {
