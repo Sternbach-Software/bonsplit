@@ -42,6 +42,11 @@ final class SplitViewController {
     /// hit-testing while drop delegates read the same value synchronously.
     var tabDragSession: TabDragSession?
 
+    /// A dropped tab whose drag image is still sliding into its slot: its
+    /// item draws nothing there until the image lands (``beginTabSettle(_:)``).
+    var settlingTabId: UUID?
+    @ObservationIgnored var tabSettleGeneration = 0
+
     /// Monotonic counter incremented on each drag start. The current value is
     /// copied into ``tabDragSession`` to invalidate stale lifecycle callbacks.
     var dragGeneration: Int = 0
