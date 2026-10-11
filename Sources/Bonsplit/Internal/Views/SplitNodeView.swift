@@ -62,6 +62,24 @@ struct SplitNodeView<Content: View, EmptyContent: View>: View {
 /// hosting chain non-draggable so SwiftUI gesture recognizers receive every click.
 final class NonDraggableHostingView<Content: View>: NSHostingView<Content> {
     override var mouseDownCanMoveWindow: Bool { false }
+
+    /// SwiftUI answers `acceptsFirstResponder` by walking the host's focusable
+    /// items, and that walk asks every nested pane host the same question. Each
+    /// pane mount rebuilds the key view loop of its whole subtree, so a deep
+    /// split chain repeated the nested walks until the main thread froze for
+    /// tens of seconds. The answer is kept for the rest of the run loop turn,
+    /// so each host is walked once per turn.
+    private var cachedAcceptsFirstResponder: Bool?
+
+    override var acceptsFirstResponder: Bool {
+        if let cachedAcceptsFirstResponder { return cachedAcceptsFirstResponder }
+        let accepts = super.acceptsFirstResponder
+        cachedAcceptsFirstResponder = accepts
+        DispatchQueue.main.async { [weak self] in
+            self?.cachedAcceptsFirstResponder = nil
+        }
+        return accepts
+    }
 }
 
 /// NSHostingController whose view is a `NonDraggableHostingView`. See the comment on
