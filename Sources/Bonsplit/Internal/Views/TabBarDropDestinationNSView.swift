@@ -87,59 +87,48 @@ final class TabBarDropDestinationNSView: NSView {
         clearDropState()
     }
 
-    /// The strip as a drop found it: the dragged tab, where it was in this
-    /// strip (nil from another pane), its width and every tab's frame here.
+    /// The strip as a drop found it: the dragged tab, where it was, its
+    /// width, and every tab's frame and on-screen part here.
     private struct SettleSnapshot {
         let tabId: UUID
-        let source: Int?
+        let source: Int
         let width: CGFloat
         let frames: [CGRect?]
+        let visible: [CGRect?]
     }
 
-    /// Nil when the drop lands at once: not a tab dragged from this app,
-    /// Reduce Motion, a strip whose tabs have no frames.
+    /// Nil when the drop lands at once: Reduce Motion, not a tab dragged
+    /// within this strip (a tab from another pane changes the layout it
+    /// lands in: its pane may close, fill-width tabs narrow), a strip whose
+    /// tabs have no frames.
     private func settleSnapshot(for sender: any NSDraggingInfo) -> SettleSnapshot? {
         guard !reducesMotion(), let pane, let geometryRegistry,
               sender.draggingPasteboard.types?.contains(TabBarDropHandler.tabTransferPasteboardType) == true,
-              let session = splitViewController?.tabDragSession else { return nil }
-        let frames = pane.tabs.map { geometryRegistry.frame(for: $0.id, in: self) }
-        let source = session.sourcePaneId == pane.id ? pane.tabs.firstIndex(where: { $0.id == session.tab.id }) : nil
-        var width: CGFloat = 0
-        if let source {
-            width = frames[source]?.width ?? 0
-        } else {
-            sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, stop in
-                width = item.draggingFrame.width
-                stop.pointee = true
-            }
-        }
-        guard width > 0 else { return nil }
-        return SettleSnapshot(tabId: session.tab.id, source: source, width: width, frames: frames)
+              let session = splitViewController?.tabDragSession, session.sourcePaneId == pane.id,
+              let source = pane.tabs.firstIndex(where: { $0.id == session.tab.id }) else { return nil }
+        let ids = pane.tabs.map(\.id)
+        let frames = ids.map { geometryRegistry.frame(for: $0, in: self) }
+        let visible = geometryRegistry.visibleFrames(for: ids, in: self)
+        guard let width = frames[source]?.width, width > 0 else { return nil }
+        return SettleSnapshot(tabId: session.tab.id, source: source, width: width, frames: frames,
+                              visible: ids.map { visible[$0] })
     }
 
     /// The slot, in this view, of the tab's place after the drop (as the
     /// pane placed it, pinned tabs first), measured on the strip before the
-    /// drop. Nil when it is not fully in view: the strip scrolls to reveal it.
+    /// drop. Nil unless every tab it passes is fully on screen: a slot
+    /// scrolled under the edge or the pinned tabs makes the strip scroll.
     private func settleSlot(after before: SettleSnapshot) -> NSRect? {
-        guard let pane, let landed = pane.tabs.firstIndex(where: { $0.id == before.tabId }),
-              let row = before.frames.lazy.compactMap({ $0 }).first else { return nil }
-        let frames = before.frames
-        let minX: CGFloat
-        if let source = before.source, landed > source {
-            // The tabs between move over by its width.
-            guard let end = frames[landed] else { return nil }
-            minX = end.maxX - before.width
-        } else if landed < frames.count {
-            guard let at = frames[landed] else { return nil }
-            minX = at.minX
-        } else {
-            guard let last = frames.last ?? nil else { return nil }
-            minX = last.maxX
+        guard let pane, let landed = pane.tabs.firstIndex(where: { $0.id == before.tabId }) else { return nil }
+        let span = min(landed, before.source)...max(landed, before.source)
+        for index in span {
+            guard let frame = before.frames[index], let shown = before.visible[index],
+                  abs(shown.width - frame.width) < 0.5 else { return nil }
         }
-        let slot = NSRect(x: minX, y: row.minY, width: before.width, height: row.height)
-        let visible = NSRect(x: bounds.minX, y: bounds.minY,
-                             width: bounds.width - (geometryRegistry?.trailingObscuredWidth ?? 0), height: bounds.height)
-        return visible.contains(slot) ? slot : nil
+        guard let row = before.frames[landed] else { return nil }
+        // Moving right, the tabs between move left by its width.
+        let minX = landed > before.source ? row.maxX - before.width : row.minX
+        return NSRect(x: minX, y: row.minY, width: before.width, height: row.height)
     }
 
     static func shouldCaptureHitTest(
