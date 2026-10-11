@@ -95,6 +95,8 @@ final class TabBarDropDestinationNSView: NSView {
         let width: CGFloat
         let frames: [CGRect?]
         let visible: [CGRect?]
+        /// The strip's viewport outside the trailing button lane.
+        let viewport: CGRect?
     }
 
     /// Nil when the drop lands at once: Reduce Motion, not a tab dragged
@@ -111,19 +113,22 @@ final class TabBarDropDestinationNSView: NSView {
         let visible = geometryRegistry.visibleFrames(for: ids, in: self)
         guard let width = frames[source]?.width, width > 0 else { return nil }
         return SettleSnapshot(tabId: session.tab.id, source: source, width: width, frames: frames,
-                              visible: ids.map { visible[$0] })
+                              visible: ids.map { visible[$0] },
+                              viewport: geometryRegistry.unobscuredViewport(in: self))
     }
 
     /// The slot, in this view, of the tab's place after the drop (as the
     /// pane placed it, pinned tabs first), measured on the strip before the
-    /// drop. Nil unless every tab it passes is fully on screen: a slot
-    /// scrolled under the edge or the pinned tabs makes the strip scroll.
+    /// drop. Nil unless every tab it passes is fully on screen, outside the
+    /// trailing button lane: a slot partly hidden makes the strip scroll.
     private func settleSlot(after before: SettleSnapshot) -> NSRect? {
         guard let pane, let landed = pane.tabs.firstIndex(where: { $0.id == before.tabId }) else { return nil }
         let span = min(landed, before.source)...max(landed, before.source)
         for index in span {
             guard let frame = before.frames[index], let shown = before.visible[index],
-                  abs(shown.width - frame.width) < 0.5 else { return nil }
+                  abs(shown.width - frame.width) < 0.5,
+                  before.viewport.map({ frame.minX >= $0.minX - 0.5 && frame.maxX <= $0.maxX + 0.5 }) ?? true
+            else { return nil }
         }
         guard let row = before.frames[landed] else { return nil }
         // Moving right, the tabs between move left by its width.
