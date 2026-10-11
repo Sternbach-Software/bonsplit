@@ -43,6 +43,19 @@ struct TabBarHoverRevealTests {
         #expect(harness.hoveredFrame.maxX <= 140.5)
     }
 
+    @Test("A hovered unselected tab keeps its reveal intent after its frame changes")
+    func hoveredGeometryAfterLaneReveal() throws {
+        let harness = try Harness()
+        defer { harness.window.orderOut(nil) }
+
+        harness.documentView.setFrameSize(NSSize(width: 660, height: 28))
+        harness.registry.setTrailingObscuredWidth(60, revealTabId: harness.hoveredTabId)
+        harness.hoveredView.frame.origin.x = 500
+        harness.registry.geometryDidChange(for: harness.hoveredTabId)
+
+        #expect(harness.hoveredFrame.maxX <= 140.5)
+    }
+
     @Test("Hover exit clears the deferred reveal before a later document resize")
     func hoverExitClearsReveal() throws {
         let harness = try Harness()
