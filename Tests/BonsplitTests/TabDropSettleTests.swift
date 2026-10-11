@@ -26,6 +26,22 @@ final class TabDropSettleTests: XCTestCase {
         XCTAssertNil(splits.settlingTabId)
     }
 
+    func testUnpinnedTabDroppedAmongPinnedTabsSlidesToWhereThePaneKeepsIt() throws {
+        let strip = try makeStrip()
+        strip.pane.tabs[0].isPinned = true
+        strip.pane.tabs[1].isPinned = true
+        let moved = strip.pane.tabs[3]
+        _ = strip.controller.internalController.beginTabDrag(moved, from: strip.pane.id)
+        // Dropped between the two pinned tabs: the pane keeps it after them.
+        let drop = try makeDrop(for: moved, at: NSPoint(x: 110, y: 15), in: strip)
+
+        XCTAssertTrue(strip.destination.performDragOperation(drop))
+
+        XCTAssertEqual(strip.pane.tabs.firstIndex(where: { $0.id == moved.id }), 2)
+        XCTAssertTrue(drop.animatesToDestination)
+        XCTAssertEqual(drop.item.draggingFrame, NSRect(x: 200, y: 0, width: 100, height: 30))
+    }
+
     func testReduceMotionDropLandsAtOnce() throws {
         let strip = try makeStrip()
         strip.destination.reducesMotion = { true }
@@ -103,6 +119,8 @@ final class TabDropSettleTests: XCTestCase {
         destination.bonsplitController = controller
         destination.splitViewController = controller.internalController
         destination.geometryRegistry = geometry
+        // The runner's own Reduce Motion setting must not decide the test.
+        destination.reducesMotion = { false }
         contentView.addSubview(destination)
         return Strip(
             window: window,
