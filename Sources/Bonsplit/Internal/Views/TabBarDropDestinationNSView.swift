@@ -95,8 +95,10 @@ final class TabBarDropDestinationNSView: NSView {
         let width: CGFloat
         let frames: [CGRect?]
         let visible: [CGRect?]
-        /// The strip's viewport outside the trailing button lane.
+        /// The strip's viewport outside the trailing button lane, where the
+        /// unpinned tabs scroll (pinned tabs sit before it, always shown).
         let viewport: CGRect?
+        let pinned: [Bool]
     }
 
     /// Nil when the drop lands at once: Reduce Motion, not a tab dragged
@@ -114,7 +116,8 @@ final class TabBarDropDestinationNSView: NSView {
         guard let width = frames[source]?.width, width > 0 else { return nil }
         return SettleSnapshot(tabId: session.tab.id, source: source, width: width, frames: frames,
                               visible: ids.map { visible[$0] },
-                              viewport: geometryRegistry.unobscuredViewport(in: self))
+                              viewport: geometryRegistry.unobscuredViewport(in: self),
+                              pinned: pane.tabs.map(\.isPinned))
     }
 
     /// The slot, in this view, of the tab's place after the drop (as the
@@ -127,7 +130,8 @@ final class TabBarDropDestinationNSView: NSView {
         for index in span {
             guard let frame = before.frames[index], let shown = before.visible[index],
                   abs(shown.width - frame.width) < 0.5,
-                  before.viewport.map({ frame.minX >= $0.minX - 0.5 && frame.maxX <= $0.maxX + 0.5 }) ?? true
+                  before.pinned[index]
+                      || before.viewport.map({ frame.minX >= $0.minX - 0.5 && frame.maxX <= $0.maxX + 0.5 }) ?? true
             else { return nil }
         }
         guard let row = before.frames[landed] else { return nil }
