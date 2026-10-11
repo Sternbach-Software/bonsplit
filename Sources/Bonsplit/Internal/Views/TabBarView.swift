@@ -1365,6 +1365,8 @@ struct TabBarView: View {
         let showsZoomIndicator = splitViewController.zoomedPaneId == pane.id && pane.selectedTabId == tab.id
         let isImmediatelyBeforeSelected = pane.tabs.indices.contains(index + 1)
             && pane.tabs[index + 1].id == pane.selectedTabId
+        // A dropped tab's drag image is still sliding here: one tab, not two.
+        let isSettling = splitViewController.settlingTabId == tab.id
         TabItemView(
             tab: tab,
             isSelected: pane.selectedTabId == tab.id,
@@ -1430,6 +1432,7 @@ struct TabBarView: View {
                 controller.requestTabMove(toDestination: destinationId, for: TabID(id: tab.id), inPane: pane.id)
             }
         )
+        .opacity(isSettling ? 0 : 1)
         .background(
             TabItemHitRegionView(
                 tabId: tab.id,
