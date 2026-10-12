@@ -327,6 +327,9 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         coordinator.isTreeDragSessionActive = { [weak internalController] in
             (internalController?.activeDividerDragSessions ?? 0) > 0
         }
+        coordinator.isTornDown = { [weak internalController] in
+            internalController?.publicController == nil
+        }
         splitView.onDividerDragSession = { [weak coordinator = coordinator, weak internalController] active in
             // The coordinator arms isDragging at begin, before any delegate
             // reacts to the session. At end the counter's zero crossing
@@ -385,15 +388,28 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
             if coordinator.didApplyInitialDividerPosition {
                 return
             }
+            // This runs a turn after makeSplitView. If the tree was torn down in
+            // between (its window closed and the controller released), laying
+            // the split out would evaluate pane hosts that can no longer read
+            // BonsplitController from their environment.
+            guard coordinator.isTornDown?() != true else {
+                coordinator.didApplyInitialDividerPosition = true
+                if animationOrigin != nil, shouldAnimate {
+                    splitView.arrangedSubviews[newPaneIndex].isHidden = false
+                    coordinator.isAnimating = false
+                }
+                return
+            }
 
             let totalSize = splitState.orientation == .horizontal
                 ? splitView.bounds.width
                 : splitView.bounds.height
             let availableSize = max(totalSize - splitView.dividerThickness, 0)
 
-            guard availableSize > 0 else {
-                // makeNSView can run before NSSplitView has a real frame; retry on the
-                // next runloop so we still get the intended entry animation.
+            guard availableSize > 0, splitView.window != nil else {
+                // makeNSView can run before NSSplitView has a real frame or a
+                // window; retry on the next runloop so we still get the intended
+                // entry animation.
                 coordinator.initialDividerApplyAttempts += 1
 #if DEBUG
                 let attempt = coordinator.initialDividerApplyAttempts
@@ -473,6 +489,10 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
                     DispatchQueue.main.async {
                         // Show the new pane and animate
                         splitView.arrangedSubviews[newPaneIndex].isHidden = false
+                        guard coordinator.isTornDown?() != true else {
+                            coordinator.isAnimating = false
+                            return
+                        }
 
                         SplitAnimator.shared.animate(
                             splitView: splitView,
@@ -562,6 +582,9 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         let internalController = controller
         coordinator.isTreeDragSessionActive = { [weak internalController] in
             (internalController?.activeDividerDragSessions ?? 0) > 0
+        }
+        coordinator.isTornDown = { [weak internalController] in
+            internalController?.publicController == nil
         }
 
         // Update orientation if changed
@@ -729,7 +752,7 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         )
     }
 
-    private func paneView(for paneState: PaneState) -> PaneContainerView<Content, EmptyContent> {
+    private func paneView(for paneState: PaneState) -> some View {
         PaneContainerView(
             pane: paneState,
             controller: controller,
@@ -739,6 +762,7 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
             tabBarVisibility: tabBarVisibility,
             contentViewLifecycle: contentViewLifecycle
         )
+        .paneHostEnvironment(controller)
     }
 
     /// What a split's arranged container currently shows.
@@ -774,6 +798,11 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         /// the divider, so an apply refuses and stays armed instead of moving
         /// it under the pointer. Installed from makeNSView/updateNSView.
         var isTreeDragSessionActive: (() -> Bool)?
+        /// Answers whether the BonsplitController behind this tree is gone.
+        /// Deferred divider work checks it before laying out: a torn-down
+        /// tree's pane hosts can no longer read the controller from their
+        /// environment.
+        var isTornDown: (() -> Bool)?
         /// Track last applied position to detect external changes
         var lastAppliedPosition: CGFloat = 0.5
         /// What the last imposed apply actually produced, and how big the
@@ -1027,6 +1056,8 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         }
 
         func setPositionSafely(_ position: CGFloat, in splitView: NSSplitView, layout: Bool = true) {
+            // setPosition lays the split out synchronously.
+            if isTornDown?() == true { return }
 #if DEBUG
             // Wobble hunt: name every divider write while an imposition is
             // active. The imposed target and a fraction-derived recompute
