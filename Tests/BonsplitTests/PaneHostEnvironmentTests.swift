@@ -16,6 +16,10 @@ struct PaneHostEnvironmentTests {
         _ = NSApplication.shared
         let controller = BonsplitController()
         controller.createTab(title: "First")
+        let newPane = try #require(controller.splitPane(orientation: .horizontal))
+        let hostingView = NSHostingView(rootView:
+            BonsplitView(controller: controller) { _, _ in Color.clear } emptyPane: { _ in Color.clear }
+        )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 500),
             styleMask: [.titled, .closable],
@@ -24,18 +28,18 @@ struct PaneHostEnvironmentTests {
         )
         window.isReleasedWhenClosed = false
         defer { window.orderOut(nil) }
-        window.contentView = NSHostingView(rootView:
-            BonsplitView(controller: controller) { _, _ in Color.clear }
-        )
+        let contentView = try #require(window.contentView)
+        hostingView.frame = contentView.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        contentView.addSubview(hostingView)
         window.makeKeyAndOrderFront(nil)
-        Self.settle(window.contentView)
-        let newPane = try #require(controller.splitPane(orientation: .horizontal))
         var hosts: [NSView] = []
         for _ in 0..<40 where hosts.count < 2 {
-            Self.settle(window.contentView)
-            hosts = Self.paneHosts(in: window.contentView)
+            Self.settle(contentView)
+            hosts = Self.paneHosts(in: contentView)
         }
-        let host = try #require(hosts.first, "The split should mount a hosting view per pane")
+        let host = try #require(hosts.first, "No pane host under: \(Self.tree(contentView))")
+
         let detachedWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
             styleMask: [.titled],
@@ -65,6 +69,11 @@ struct PaneHostEnvironmentTests {
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         view?.layoutSubtreeIfNeeded()
         view?.displayIfNeeded()
+    }
+
+    private static func tree(_ view: NSView, depth: Int = 0) -> String {
+        guard depth < 12 else { return "" }
+        return String(describing: type(of: view)) + "[" + view.subviews.map { tree($0, depth: depth + 1) }.joined(separator: ",") + "]"
     }
 
     private static func paneHosts(in root: NSView?) -> [NSView] {
