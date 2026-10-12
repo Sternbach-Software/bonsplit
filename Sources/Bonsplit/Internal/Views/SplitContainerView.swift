@@ -385,6 +385,17 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
             if coordinator.didApplyInitialDividerPosition {
                 return
             }
+            // This runs a turn after makeSplitView. If the split was torn down
+            // in between (its window closed), laying it out would evaluate pane
+            // hosts that have left BonsplitView and trap on its environment.
+            guard splitView.window != nil, controller.publicController != nil else {
+                coordinator.didApplyInitialDividerPosition = true
+                if animationOrigin != nil, shouldAnimate {
+                    splitView.arrangedSubviews[newPaneIndex].isHidden = false
+                    coordinator.isAnimating = false
+                }
+                return
+            }
 
             let totalSize = splitState.orientation == .horizontal
                 ? splitView.bounds.width
@@ -729,7 +740,7 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         )
     }
 
-    private func paneView(for paneState: PaneState) -> PaneContainerView<Content, EmptyContent> {
+    private func paneView(for paneState: PaneState) -> some View {
         PaneContainerView(
             pane: paneState,
             controller: controller,
@@ -739,6 +750,7 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
             tabBarVisibility: tabBarVisibility,
             contentViewLifecycle: contentViewLifecycle
         )
+        .paneHostEnvironment(controller)
     }
 
     /// What a split's arranged container currently shows.
