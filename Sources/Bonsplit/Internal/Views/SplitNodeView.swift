@@ -100,11 +100,9 @@ struct PaneHostEnvironment: ViewModifier {
     let controller: SplitViewController
 
     func body(content: Content) -> some View {
-        if let publicController = controller.publicController {
-            content.environment(controller).environment(publicController)
-        } else {
-            content.environment(controller)
-        }
+        content
+            .environment(controller)
+            .environment(controller.publicController)
     }
 }
 
