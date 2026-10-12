@@ -3176,7 +3176,13 @@ struct TabBarDragZoneView: NSViewRepresentable {
         }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
-            guard shouldCaptureHit(at: point) else { return nil }
+            // AppKit supplies hitTest(_:) with a point in the receiver's
+            // superview coordinate space. The hit-region calculations below
+            // are local to this drag zone, so translate before evaluating
+            // bounds or tab geometry. This matters for the trailing overlay,
+            // whose frame starts after the tab viewport.
+            let localPoint = superview.map { convert(point, from: $0) } ?? point
+            guard shouldCaptureHit(at: localPoint) else { return nil }
             return self
         }
 
