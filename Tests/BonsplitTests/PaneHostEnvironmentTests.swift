@@ -27,11 +27,15 @@ struct PaneHostEnvironmentTests {
         window.contentView = NSHostingView(rootView:
             BonsplitView(controller: controller) { _, _ in Color.clear }
         )
-        window.contentView?.layoutSubtreeIfNeeded()
-        let newPane = try #require(controller.splitPane(orientation: .horizontal))
+        window.makeKeyAndOrderFront(nil)
         Self.settle(window.contentView)
-
-        let host = try #require(Self.paneHosts(in: window.contentView).first)
+        let newPane = try #require(controller.splitPane(orientation: .horizontal))
+        var hosts: [NSView] = []
+        for _ in 0..<40 where hosts.count < 2 {
+            Self.settle(window.contentView)
+            hosts = Self.paneHosts(in: window.contentView)
+        }
+        let host = try #require(hosts.first, "The split should mount a hosting view per pane")
         let detachedWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
             styleMask: [.titled],
@@ -43,6 +47,7 @@ struct PaneHostEnvironmentTests {
         host.removeFromSuperview()
         host.frame = detachedWindow.contentView?.bounds ?? .zero
         detachedWindow.contentView?.addSubview(host)
+        detachedWindow.orderFront(nil)
 
         // Invalidate the panes so the detached host re-evaluates its views.
         controller.createTab(title: "After detach", inPane: newPane)
@@ -64,7 +69,7 @@ struct PaneHostEnvironmentTests {
 
     private static func paneHosts(in root: NSView?) -> [NSView] {
         guard let root else { return [] }
-        let isPaneHost = root is NonDraggableHostingView<AnyView>
+        let isPaneHost = String(describing: type(of: root)).hasPrefix("NonDraggableHostingView")
         return (isPaneHost ? [root] : []) + root.subviews.flatMap { paneHosts(in: $0) }
     }
 }
