@@ -78,7 +78,10 @@ struct PaneHostEnvironmentTests {
 
     private static func paneHosts(in root: NSView?) -> [NSView] {
         guard let root else { return [] }
-        let isPaneHost = String(describing: type(of: root)).hasPrefix("NonDraggableHostingView")
-        return (isPaneHost ? [root] : []) + root.subviews.flatMap { paneHosts(in: $0) }
+        // Each split child is a SplitArrangedContainerView holding one pane's hosting view.
+        if root is SplitArrangedContainerView {
+            return root.subviews.filter { $0 is NSHostingView<AnyView> }
+        }
+        return root.subviews.flatMap { paneHosts(in: $0) }
     }
 }
