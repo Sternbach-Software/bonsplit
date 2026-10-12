@@ -64,6 +64,75 @@ struct PaneHostEnvironmentTests {
         #expect(host.window === detachedWindow)
     }
 
+    /// cmux's crashing test splits a window's only pane. The root pane is
+    /// hosted by `SinglePaneWrapper`, which SwiftUI dismantles when the root
+    /// becomes a split; its host can still receive an update afterwards.
+    @Test("The root pane host survives its pane turning into a split")
+    func rootPaneHostAfterSplit() throws {
+        _ = NSApplication.shared
+        let controller = BonsplitController()
+        controller.createTab(title: "First")
+        let hostingView = NSHostingView(rootView:
+            BonsplitView(controller: controller) { _, _ in Color.clear } emptyPane: { _ in Color.clear }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 500),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.orderOut(nil) }
+        let contentView = try #require(window.contentView)
+        hostingView.frame = contentView.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        contentView.addSubview(hostingView)
+        window.makeKeyAndOrderFront(nil)
+        var rootHost: NSView?
+        for _ in 0..<40 where rootHost == nil {
+            Self.settle(contentView)
+            rootHost = Self.singlePaneHost(in: contentView)
+        }
+        let host = try #require(rootHost, "No root pane host under: \(Self.tree(contentView))")
+        let firstPane = try #require(controller.focusedPaneId)
+
+        _ = try #require(controller.splitPane(firstPane, orientation: .horizontal))
+        Self.settle(contentView)
+        // The dismantled root host still holds the first pane; change it.
+        controller.createTab(title: "After split", inPane: firstPane)
+        for pane in controller.internalController.rootNode.allPanes {
+            pane.tabs.append(TabItem(title: "Extra", icon: nil))
+        }
+        let parkingWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        parkingWindow.isReleasedWhenClosed = false
+        defer { parkingWindow.orderOut(nil) }
+        if host.window == nil {
+            host.frame = parkingWindow.contentView?.bounds ?? .zero
+            parkingWindow.contentView?.addSubview(host)
+            parkingWindow.orderFront(nil)
+        }
+        Self.settle(host)
+        host.display()
+        Self.settle(contentView)
+
+        #expect(host.window != nil)
+    }
+
+    private static func singlePaneHost(in root: NSView) -> NSView? {
+        if root is PaneDragContainerView {
+            return root.subviews.first { String(describing: type(of: $0)).contains("HostingView") }
+        }
+        for subview in root.subviews {
+            if let match = singlePaneHost(in: subview) { return match }
+        }
+        return nil
+    }
+
     private static func settle(_ view: NSView?) {
         view?.layoutSubtreeIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
