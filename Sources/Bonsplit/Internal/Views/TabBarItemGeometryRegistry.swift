@@ -266,6 +266,15 @@ final class TabBarItemGeometryRegistry {
         self.scrollWheelMonitor = nil
     }
 
+    /// The part of the strip's scrolling viewport no trailing control lane
+    /// covers, in `targetView`; nil before the strip has a scroll view.
+    func unobscuredViewport(in targetView: NSView) -> CGRect? {
+        guard let clipView = scrollView?.contentView, clipView.window === targetView.window else { return nil }
+        var rect = clipView.bounds
+        rect.size.width = max(0, rect.width - trailingObscuredWidth)
+        return clipView.convert(rect, to: targetView)
+    }
+
     func frame(for tabId: UUID, in targetView: NSView) -> CGRect? {
         guard let itemView = itemViews.object(forKey: tabId as NSUUID),
               itemView.window === targetView.window,
