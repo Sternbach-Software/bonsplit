@@ -37,10 +37,18 @@ struct PaneHostEnvironmentTests {
 
         let firstPane = try #require(controller.focusedPaneId)
         _ = try #require(controller.splitPane(firstPane, orientation: .horizontal))
-        // Mount the split in this turn: makeSplitView queues its initial
-        // divider apply for the next turn.
+        // Mount the split; makeSplitView queues its initial divider apply for
+        // a later turn. Step the run loop one source at a time and stop as
+        // soon as the split view exists.
+        window.displayIfNeeded()
         contentView.layoutSubtreeIfNeeded()
-        let splitView = try #require(Self.firstSplitView(in: hostingView))
+        var mounted = Self.firstSplitView(in: hostingView)
+        for _ in 0..<200 where mounted == nil {
+            CFRunLoopRunInMode(.defaultMode, 0.005, true)
+            contentView.layoutSubtreeIfNeeded()
+            mounted = Self.firstSplitView(in: hostingView)
+        }
+        let splitView = try #require(mounted)
 
         // Tear the window down before that turn, the way cmux closes a window
         // right after a split.
