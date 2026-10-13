@@ -368,6 +368,7 @@ struct TabItemView: View {
     @AppStorage(TabControlShortcutHintDebugSettings.alwaysShowKey) private var alwaysShowShortcutHints = TabControlShortcutHintDebugSettings.defaultAlwaysShow
 
     var body: some View {
+        let _ = { ProbeCounters.tabItemBody += 1 }()
         tabContent
         .padding(.horizontal, TabBarMetrics.tabHorizontalPadding)
         .frame(

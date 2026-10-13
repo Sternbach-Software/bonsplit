@@ -1208,6 +1208,7 @@ struct TabBarView: View {
     }
 
     var body: some View {
+        let _ = { ProbeCounters.tabBarBody += 1 }()
         HStack(spacing: 0) {
             if appearance.tabBarLeadingInset > 0 && controller.internalController.rootNode.allPaneIds.first == pane.id {
                 TabBarDragZoneView(
@@ -3312,6 +3313,7 @@ private struct TabBarHostWindowReader: NSViewRepresentable {
 @MainActor
 @Observable
 private final class TabControlShortcutKeyMonitor {
+    init() { ProbeCounters.monitorInit += 1 }
     private(set) var isShortcutHintVisible = false
     private(set) var shortcutModifierSymbol = TabControlShortcutHintPolicy.configuredShortcutModifierSymbol()
 
