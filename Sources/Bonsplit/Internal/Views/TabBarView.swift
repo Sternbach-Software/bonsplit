@@ -1208,7 +1208,15 @@ struct TabBarView: View {
     }
 
     var body: some View {
-        let _ = { ProbeCounters.tabBarBody += 1 }()
+        let t0 = ProbeCounters.now()
+        let v = probeRealBody
+        ProbeCounters.tabBarBody += 1
+        ProbeCounters.tabBarBodyNs += ProbeCounters.now() - t0
+        return v
+    }
+
+    @ViewBuilder
+    private var probeRealBody: some View {
         HStack(spacing: 0) {
             if appearance.tabBarLeadingInset > 0 && controller.internalController.rootNode.allPaneIds.first == pane.id {
                 TabBarDragZoneView(
