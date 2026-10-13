@@ -200,9 +200,7 @@ final class TabBarItemGeometryRegistry {
         locationInWindow: NSPoint,
         window: NSWindow?
     ) -> Bool {
-        guard !hasPreciseScrollingDeltas,
-              abs(deltaY) > abs(deltaX),
-              let scrollView,
+        guard let scrollView,
               let window,
               scrollView.window === window,
               isVisibleInHierarchy(scrollView),
@@ -212,9 +210,16 @@ final class TabBarItemGeometryRegistry {
             return false
         }
 
+        // Native horizontal/trackpad scrolling can arrive without a live-scroll
+        // notification. Clear the selection anchor before AppKit moves the clip
+        // view, or scrollBoundsDidChange snaps it straight back.
+        userWillScroll()
+        guard !hasPreciseScrollingDeltas, abs(deltaY) > abs(deltaX) else {
+            return false
+        }
+
         // Wheel down (negative delta) moves toward the trailing tabs, like
         // it moves down a vertical list.
-        userWillScroll()
         setHorizontalOffset(
             metrics.offset - deltaY * TabBarItemGeometryRegistry.mouseWheelLineWidth,
             metrics: metrics

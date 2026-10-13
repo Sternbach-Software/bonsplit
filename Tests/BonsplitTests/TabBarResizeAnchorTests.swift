@@ -68,6 +68,31 @@ final class TabBarResizeAnchorTests: XCTestCase {
         )
     }
 
+    func testHorizontalWheelWithoutLiveScrollNotificationRelinquishesSelectionAnchor() throws {
+        let harness = try makeGeometryRegistryHarness()
+        defer { harness.window.orderOut(nil) }
+
+        harness.registry.attachScrollView(harness.scrollView)
+        harness.registry.register(harness.selectedView, for: harness.selectedTabId)
+        harness.registry.revealSelection(harness.selectedTabId)
+        let revealedOffset = harness.scrollView.contentView.bounds.origin.x
+        XCTAssertGreaterThan(revealedOffset, 0)
+
+        let pointInStrip = harness.scrollView.convert(NSPoint(x: 100, y: 10), to: nil)
+        XCTAssertFalse(harness.registry.scrollHorizontallyForMouseWheel(
+            deltaX: 35,
+            deltaY: 0,
+            hasPreciseScrollingDeltas: true,
+            locationInWindow: pointInStrip,
+            window: harness.window
+        ))
+
+        let userOffset: CGFloat = 120
+        harness.scrollView.contentView.scroll(to: NSPoint(x: userOffset, y: 0))
+        harness.scrollView.reflectScrolledClipView(harness.scrollView.contentView)
+        XCTAssertEqual(harness.scrollView.contentView.bounds.origin.x, userOffset, accuracy: 0.5)
+    }
+
     func testVerticalMouseWheelScrollsOverflowingStripHorizontally() throws {
         let harness = try makeGeometryRegistryHarness()
         defer { harness.window.orderOut(nil) }
