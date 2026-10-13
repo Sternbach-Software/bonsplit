@@ -97,3 +97,54 @@ final class ZZProbeHintTests: XCTestCase {
         log("idleEnd2s \(ProbeCounters.summary)")
     }
 }
+
+@MainActor
+final class ZZProbeWidthSweepTests: XCTestCase {
+    private func log(_ s: String) { print("PROBE " + s); fflush(stdout) }
+
+    private func sweep(mode: BonsplitConfiguration.Appearance.TabWidthMode, tabCount: Int, label: String) throws {
+        _ = NSApplication.shared
+        let controller = BonsplitController(configuration: BonsplitConfiguration(appearance: .init(tabWidthMode: mode, enableAnimations: false)))
+        controller.tabShortcutHintsEnabled = true
+        for i in 0..<tabCount { _ = controller.createTab(title: "Terminal \(i) ~/src/project", icon: "terminal.fill", kind: "terminal") }
+        let hostingView = NSHostingView(rootView: BonsplitView(controller: controller) { _, _ in Color.clear } emptyPane: { _ in Color.clear })
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1400, height: 400), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        defer { window.orderOut(nil) }
+        hostingView.frame = window.contentView!.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        window.contentView!.addSubview(hostingView)
+        window.makeKeyAndOrderFront(nil)
+        func pump(_ seconds: Double) {
+            let end = Date().addingTimeInterval(seconds)
+            while Date() < end {
+                window.contentView?.layoutSubtreeIfNeeded()
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.005))
+            }
+        }
+        pump(0.5)
+        var worst = (width: 0.0, settle: 0, idle: 0)
+        var flagged: [String] = []
+        var width = 1400.0
+        while width >= 260 {
+            ProbeCounters.reset()
+            window.setContentSize(NSSize(width: width, height: 400))
+            pump(0.06)
+            let settle = ProbeCounters.tabItemBody
+            ProbeCounters.reset()
+            pump(0.12)
+            let idle = ProbeCounters.tabItemBody
+            if settle > worst.settle { worst = (width, settle, idle) }
+            if idle > 0 || settle > tabCount * 6 {
+                flagged.append("w=\(Int(width)) settle=\(settle) idle=\(idle) tabBar=\(ProbeCounters.tabBarBody)")
+            }
+            width -= 3
+        }
+        log("\(label) worstSettle w=\(Int(worst.width)) bodies=\(worst.settle) idleAfter=\(worst.idle) flagged=\(flagged.count)")
+        for f in flagged.prefix(12) { log("\(label)   \(f)") }
+    }
+
+    func testSweepFixed6() throws { try sweep(mode: .fixed, tabCount: 6, label: "fixed6") }
+    func testSweepFill6() throws { try sweep(mode: .fill, tabCount: 6, label: "fill6") }
+    func testSweepFixed2() throws { try sweep(mode: .fixed, tabCount: 2, label: "fixed2") }
+    func testSweepFill2() throws { try sweep(mode: .fill, tabCount: 2, label: "fill2") }
+}

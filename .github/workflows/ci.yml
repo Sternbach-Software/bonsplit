@@ -22,7 +22,7 @@ jobs:
         run: swift package resolve
 
       - name: Probe (debug)
-        run: swift test --filter ZZProbeHintTests 2>&1 | grep -E "PROBE|error|passed|failed"
+        run: swift test --filter "ZZProbe" 2>&1 | grep -E "PROBE|error|passed|failed"
 
       - name: Probe (release)
-        run: swift test -c release -Xswiftc -enable-testing --filter ZZProbeHintTests 2>&1 | grep -E "PROBE|error|passed|failed"
+        run: swift test -c release -Xswiftc -enable-testing --filter "ZZProbe" 2>&1 | grep -E "PROBE|error|passed|failed"
