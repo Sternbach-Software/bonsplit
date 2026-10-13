@@ -60,6 +60,41 @@ final class TabBarRenderWorkTests: XCTestCase {
         XCTAssertEqual(disconnectRemoteQueries, 0, "Rendering tabs must not ask the host for remote disconnect availability")
     }
 
+    func testMenuBuildEvaluatesTabStateOnce() {
+        var stateEvaluations = 0
+        let snapshot = TabContextMenuSnapshot(
+            tabId: UUID(),
+            stateProvider: {
+                stateEvaluations += 1
+                return TabContextMenuState(
+                    isPinned: false,
+                    isUnread: false,
+                    isBrowser: false,
+                    isAudioMuted: false,
+                    isTerminal: true,
+                    hasCustomTitle: false,
+                    canCloseToLeft: true,
+                    canCloseToRight: true,
+                    canCloseOthers: true,
+                    canMoveToNewWorkspace: true,
+                    canMoveToLeftPane: false,
+                    canMoveToRightPane: true,
+                    forkConversationDefaultAction: .forkConversationRight,
+                    isZoomed: false,
+                    hasSplits: true,
+                    shortcuts: [:]
+                )
+            },
+            moveDestinationsProvider: { [] },
+            forkConversationAvailabilityProvider: { .hidden }
+        )
+        XCTAssertEqual(stateEvaluations, 0, "Creating a snapshot must not compute the menu state")
+
+        let menu = TabContextMenuBuilder.makeMenu(snapshot: snapshot, target: TabContextMenuActionTarget())
+        XCTAssertFalse(menu.items.isEmpty)
+        XCTAssertEqual(stateEvaluations, 1, "One menu build reads one state value")
+    }
+
     private func settleLayout(in window: NSWindow, hostingView: NSView, passes: Int = 6) {
         for _ in 0..<passes {
             window.contentView?.layoutSubtreeIfNeeded()
